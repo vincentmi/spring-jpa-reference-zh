@@ -24,10 +24,15 @@ public interface CrudRepository<T, ID extends Serializable>
 ```
 
 1) 保存这个实体 
+
 2) 使用给定的ID返回实体 
+
 3) 返回所有实体 
+
 4) 返回实体的个数 
+
 5) 删除给定的实体 
+
 6) 检查指定ID的实体是否存在 
 
 
