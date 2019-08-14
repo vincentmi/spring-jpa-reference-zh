@@ -8,11 +8,12 @@
 
 © 2008-2019 The original authors.
 
-Copies of this document may be made for your own use and for distribution to others, provided that you do not charge any fee for such copies and further provided that each copy contains this Copyright Notice, whether distributed in print or electronically.
+>Copies of this document may be made for your own use and for distribution to >others, provided that you do not charge any fee for such copies and further provided that each copy contains this Copyright Notice, whether distributed in print or electronically.
 
 
 
-翻译: miwenshu@gmail.com \(vnzmi.com\)
+翻译: miwenshu@gmail.com  ([http://vnzmi.com](http://vnzmi.com))
+
 
 
 
