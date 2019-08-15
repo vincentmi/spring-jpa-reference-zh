@@ -173,24 +173,135 @@ interface UserRepository extends MyBaseRepository<User, Long> {
 }
 ```
 
-上面的例子,你定义了一个基础的接口用于你的所以仓库,保留了```findById``` 和 ```Save``` 方法.这些方法会路由到你选择的 Spring Data的实现类(例如,如果你使用JPA,他的实现是 ```SimpleJpaRepository```),因为他们与```CrudRepository```的方法签名匹配,所以 ```UserRepository```现在可以save和findById,并且可以通过email查询用户.
+上面的例子,你定义了一个基础的接口用于你的所以仓库,保留了```findById``` 和 ```Save``` 方法.这些方法会路由到你选择的 Spring Data的实现类(例如,如果你使用JPA,他的实现是 ```SimpleJpaRepository```),因为他们与```CrudRepository```的方法签名匹配,所以 ```UserRepository```现在可以```save```和```findById```,并且可以通过email查询用户.
 
 > 中间接口使用 ```@NoRepositoryBean``` 进行注解,这样Spring Data 就不会为他创建运行时的实例.
 > 
 
 ### 4.3.2. Null Handling of Repository Methods
 
-As of Spring Data 2.0, repository CRUD methods that return an individual aggregate instance use Java 8’s Optional to indicate the potential absence of a value. Besides that, Spring Data supports returning the following wrapper types on query methods:
+从Spring Data 2.0开始,仓库的CRUD方法返回了Java8的 ```Optional```对象来检查是否存在值.Spring Data 支持在Query方法中返回如下类型的包装类:
 
-com.google.common.base.Optional
+```com.google.common.base.Optional```
 
-scala.Option
+```scala.Option```
 
-io.vavr.control.Option
+```io.vavr.control.Option```
 
-javaslang.control.Option (deprecated as Javaslang is deprecated)
+```javaslang.control.Option (deprecated as Javaslang is deprecated)```
 
-Alternatively, query methods can choose not to use a wrapper type at all. The absence of a query result is then indicated by returning null. Repository methods returning collections, collection alternatives, wrappers, and streams are guaranteed never to return null but rather the corresponding empty representation. See “Repository query return types” for details.
+或者Query方法也可以选择不使用包装类,如果查询的结果不存在则返回```null```.
+保证返回集合，集合替代，包装器和stream的存储库方法永远不会返回null，而是返回相应的空表示。 有关详细信息，请参阅[“存储库查询返回类型”](https://docs.spring.io/spring-data/jpa/docs/2.1.10.RELEASE/reference/html/#repository-query-return-types)。
+
+#### Nullability注解
+
+您可以使用Spring Framework的可空性注释来表达存储库方法的可空性约束。 它们在运行时提供了一种工具友好的方法和opt-in null检查，如下所示：
+
+```@NonNullApi```：在包级别上使用，以声明参数和返回值的默认行为是不接受或生成空值。
+
+```@NonNull```：用于参数或返回值，该值不能为null（参数和@NonNullApi适用的返回值不需要）。
+
+```@Nullable```：用于可以为null的参数或返回值。
+
+
+Spring注释是使用JSR 305注释进行元注释的。 JSR 305元注释允许IDEA，Eclipse和Kotlin等工具供应商以通用方式提供空安全支持，而无需对Spring注释进行硬编码支持。 要为查询方法启用运行时检查可空性约束，需要在package-info.java中使用Spring的@NonNullApi来激活包级别的非可空性，如以下示例所示：
+
+```java
+@org.springframework.lang.NonNullApi
+package com.acme;
+```
+
+一旦存在非null默认值，就会在运行时验证存储库查询方法调用的可空性约束。 如果查询执行结果违反了定义的约束，则抛出异常。 当方法返回null但声明为非可空（默认情况下，在存储库所在的包中定义了注释）时会发生这种情况。 如果您想再次选择可以为空的结果，请在各个方法上有选择地使用@Nullable。 使用本节开头提到的结果包装器类型将继续按预期工作：空结果将转换为表示缺席的值。
+
+
+```java
+package com.acme;                                    //(1)                   
+import org.springframework.lang.Nullable;
+interface UserRepository extends Repository<User, Long> {
+  User getByEmailAddress(EmailAddress emailAddress);        //(2)             
+  @Nullable
+  User findByEmailAddress(@Nullable EmailAddress emailAdress);      //(3)        
+  Optional<User> findOptionalByEmailAddress(EmailAddress emailAddress);    //(4)
+}
+```
+
+(1) 进行非空检测行为的包
+
+(2) 当查询的结果为空时抛出```EmptyResultDataAccessException``` 异常,当传递给方法的参数```emailAddress```为空的时候抛出 ```IllegalArgumentException```异常.
+
+(3) 当查询的结果为空的时候返回```null```,同时也允许参数 ```emailAddress```为```null```
+
+(4) 当查询的结果为空的时候回返回 ```Optional.empty()```,当传递给```emailAddress```的值为空是抛出```IllegalArgumentException```异常.  
+
+Nullability in Kotlin-based Repositories
+#### Kotlin的空值约束
+
+Kotlin对语言中的可空性约束进行了定义。 Kotlin代码编译为字节码，它不通过方法签名表达可空性约束，而是通过编译元数据表达。 确保在项目中包含kotlin-reflect 包，以便对Kotlin的可空性约束进行内部检查。 Spring Data库使用语言机制来定义这些约束以应用相同的运行时检查，如下所示：
+
+示例10.对Kotlin存储库使用可空性约束
+
+```kotlin
+interface UserRepository : Repository<User, String> {
+
+  fun findByUsername(username: String): User     //(1) 
+
+  fun findByFirstname(firstname: String?): User?  //(2)
+}
+```
+
+(1) 这个方法被kotlin默认定义为方法参数和返回值都不为空.Kotlin编译器拒绝在方法中传递```null```.如果查询执行结果产生了一个空的结果,将会抛出```EmptyResultDataAccessException```异常.
+(2)  这个方法接受  ```null```作为 ```firstname```参数 的值,如果查询结果为空或直接返回 ```null```
+
+
+#### 4.3.3. 在仓库中使用多个Spring  Data模块
+
+在应用中使用唯一的Spring Data模块较为简单.因为所有接口都绑定到Spring Data模块.有时候应用程序需要使用多个Spring Data模块.在这种情况下仓库定义必须区分持久层的技术.当Spring在类路径上检测到多个库的工厂时,Spring Data 将会进入到严格配置模式.严格模式使用库或者领域类的详细信息来决定存储库与Spring Data 模块的绑定:
+
+> 如果库的定义扩展了模块特定的库，那么它是特定Spring Data 模块的有效候选者。
+
+> 如果领域类有Spring Data模块的专有注解,那么他是特定Spring Data模块的有效候选者,比如 JPA的 ```@Entity```注解.比如 ```@Document```注解用于Spring Data MongoDB和Spring Data Elasticsearch.
+
+下面的例子展示了使用模块相关接口的例子: (例子中使用JPA)
+
+示例 11. 仓库定义使用了模块指定的接口
+
+```java
+interface MyRepository extends JpaRepository<User, Long> { }
+
+@NoRepositoryBean
+interface MyBaseRepository<T, ID extends Serializable> extends JpaRepository<T, ID> {
+  …
+}
+
+interface UserRepository extends MyBaseRepository<User, Long> {
+  …
+}
+```
+
+```MyRepository``` 和 ```UserRepository```继承自 ```JpaRepository```. 他们是Spring Data JPA 模块的候选者.
+
+
+示例 12. 仓库定义使用通用接口
+
+```java
+interface AmbiguousRepository extends Repository<User, Long> {
+ …
+}
+
+@NoRepositoryBean
+interface MyBaseRepository<T, ID extends Serializable> extends CrudRepository<T, ID> {
+  …
+}
+
+interface AmbiguousUserRepository extends MyBaseRepository<User, Long> {
+  …
+}
+
+```
+```AmbiguousRepository``` 和 ```AmbiguousUserRepository``` 继承自 Repository 和 CrudRepository .单个数据模块没有问题.但是多个模块的时候就不能确定应该绑定到哪个模块.
+ 
+
+
 
 
 
