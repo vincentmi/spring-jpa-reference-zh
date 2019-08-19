@@ -300,8 +300,79 @@ interface AmbiguousUserRepository extends MyBaseRepository<User, Long> {
 ```
 ```AmbiguousRepository``` 和 ```AmbiguousUserRepository``` 继承自 Repository 和 CrudRepository .单个数据模块没有问题.但是多个模块的时候就不能确定应该绑定到哪个模块.
  
+下面的示例演示了使用注解的领域类:
+
+示例 13. 仓库使用领域逻辑注解
+
+```java
+interface PersonRepository extends Repository<Person, Long> {
+ …
+}
+@Entity
+class Person {
+  …
+}
+interface UserRepository extends Repository<User, Long> {
+ …
+}
+@Document
+class User {
+  …
+}
+```
+```PersonRepository```引用了```Person```, ```Person```通过 JPA的 ```@Entity```进行注解.所以很明显这个仓库属于Spring Data JPA.```UserRepository```引用了```User```,而```User```使用了属于MongoDB的```@Document```注解.
+
+下面是一个错误的示例,领域逻辑使用了混合的注解:
+
+示例 14. 仓库使用了混合注解的领域类
+
+```java
+interface JpaPersonRepository extends Repository<Person, Long> {
+ …
+}
+interface MongoDBPersonRepository extends Repository<Person, Long> {
+ …
+}
+
+@Entity
+@Document
+class Person {
+  …
+}
+```
+这个例子中一个领域类同时使用了JPA和Spring Data MongoDB 的注解.他定义了两个仓库 ```JpaPersonRepository```和```MongoDBPersonRepository```.希望一个用于```JPA```另一个用于```MongoDB```,Spring Data 不再能区分存储库.这将导致未定义的行为.
+
+库类型定义和领域类注解用于准确的存储库配置，用于识别特定Spring Data 模块的存储库候选。 在同一域类型上使用多个持久性技术特定的注释是可能的，并允许跨多种持久性技术重用域类型。 但是，Spring Data不再能够确定用于绑定存储库的唯一模块。
+
+区分存储库的最后一种方法是通过确定存储库基础包的范围。 基础包定义了扫描存储库接口定义的起点，这意味着将存储库定义放在相应的包中。 默认情况下，注释驱动的配置使用配置类的包。 基于XML的配置中的基础包是必需的。
+
+示例 15. 在注解中配置基础包
+
+```java
+@EnableJpaRepositories(basePackages = "com.acme.repositories.jpa")
+@EnableMongoRepositories(basePackages = "com.acme.repositories.mongo")
+interface Configuration { }
+```
 
 
+## 4.4 定义查询方法
+
+库的代理有两种方式通过类方法来定义查询 1) 直接使用方法名  2) 使用手动定义的查询语句
+
+可用的方法取决于具体的存储.但是必须有一个策略创建实际的查询内容.下一节将介绍可用选项.
+
+
+### 4.4.1 查询查找策略
+
+存储库基础架构可用使用以下的策略来解析查询.使用XML配置你可以通过```query-lookup-strategy```属性在命名空间来配置策略.使用Java配置你可以使用```Enable${store}Repositories```注解的```queryLookupStrategy```属性来进行配置.一些数据存储可能不支持某些策略.
+
+-```CREATE``` 尝试从查询方法名称构造特定存储的查询.通常是删除方法的前缀并解析方法的余下的部分.你可以从后续的内容找到详情
+- ```USE_DECLARED_QUERY``` 尝试查找一个已经定义的查询语句,如果找不到会抛出异常.查询可以通过注解来声明,也可以通过其他方式.如果仓库的基础架构在引导时未找到这个已经定义的查询语句将会导致一个失败.
+- ```CREATE_IF_NOT_FOUND``` (默认) 结合了 ```CREATE``` 和 ```USE_DECLARED_QUERY```. 首先查询是不是有已经定义的查询语句.如果没有找到,则会创建根据方法名解析的查询语句.这是默认的查找策略，因此，如果您未明确配置任何内容，则使用此策略。 它允许通过方法名称进行快速查询定义，还可以根据需要引入声明的查询来自定义这些查询。
+
+### 4.4.2 创建查询语句
+
+Spring Data 仓库基础架构的查询构造器对于创建对实体的基本查询非常有效.这个机制剥离方法中的``` find…By```, ```read…By```, ```query…By```, ```count…By```, 和 ```get…By ```解析剩下的部分.The introducing clause can contain further expressions, such as a Distinct to set a distinct flag on the query to be created. However, the first By acts as delimiter to indicate the start of the actual criteria. At a very basic level, you can define conditions on entity properties and concatenate them with And and Or. The following example shows how to create a number of queries:
 
 
 
