@@ -372,7 +372,52 @@ interface Configuration { }
 
 ### 4.4.2 创建查询语句
 
-Spring Data 仓库基础架构的查询构造器对于创建对实体的基本查询非常有效.这个机制剥离方法中的``` find…By```, ```read…By```, ```query…By```, ```count…By```, 和 ```get…By ```解析剩下的部分.The introducing clause can contain further expressions, such as a Distinct to set a distinct flag on the query to be created. However, the first By acts as delimiter to indicate the start of the actual criteria. At a very basic level, you can define conditions on entity properties and concatenate them with And and Or. The following example shows how to create a number of queries:
+Spring Data 仓库基础架构的查询构造器对于创建对实体的基本查询非常有效.这个机制剥离方法中的``` find…By```, ```read…By```, ```query…By```, ```count…By```, 和 ```get…By ```解析剩下的部分.在开始的部分可以包含更多表达式,比如使用```Distinct```来为查询语句设置一个 ```distinct```标志.第一个```By```扮演一个分隔符来界定实际条件的开始.最基本的使用方式,你可以使用实体的属性用```And```或者```Or```连接起来.一下示例展示了如何创建一些查询: 
 
+示例:16 使用方法名创建查询
+
+```java
+interface PersonRepository extends Repository<User, Long> {
+
+  List<Person> findByEmailAddressAndLastname(EmailAddress emailAddress, String lastname);
+
+  // Enables the distinct flag for the query
+  List<Person> findDistinctPeopleByLastnameOrFirstname(String lastname, String firstname);
+  List<Person> findPeopleDistinctByLastnameOrFirstname(String lastname, String firstname);
+
+  // Enabling ignoring case for an individual property
+  List<Person> findByLastnameIgnoreCase(String lastname);
+  // Enabling ignoring case for all suitable properties
+  List<Person> findByLastnameAndFirstnameAllIgnoreCase(String lastname, String firstname);
+
+  // Enabling static ORDER BY for a query
+  List<Person> findByLastnameOrderByFirstnameAsc(String lastname);
+  List<Person> findByLastnameOrderByFirstnameDesc(String lastname);
+}
+```
+
+解析的实际结果取决于你正在使用的持久化层.但是有一些一般需要注意的事项:
+
+- 表达式通常是由可遍历的属性和运算符连接起来.你可以使用```AND```和```OR```将他们连接起来.你也可以使用其他的运算符,比如 ```Between``` , ```LessThan```,```GreaterThan```,```Like``` 来连接表达式.支持的运算符与数据库有关,请参阅文档的相关部分
+- 方法解析器支持为各个属性设置```IgnoreCase```标志（例如，```findByLastnameIgnoreCase（...）```）或支持忽略大小写的类型的所有属性（通常是字符串类型 - 例如，```findByLastnameAndFirstnameAllIgnoreCase（...）```）。 是否支持忽略大小写可能因存储而异，因此请参阅参考文档中有关特定于商店的查询方法的相关章节。
+- 你也可以通过加入```OrderBy```到查询方法来进行静态排序,并使用 ```Asc```或者```Desc```来提供排序的方向.要创建动态排序查询后续章节(4.4.4).
+
+### 4.4.3. 属性表达式
+
+Property expressions can refer only to a direct property of the managed entity, as shown in the preceding example. At query creation time, you already make sure that the parsed property is a property of the managed domain class. However, you can also define constraints by traversing nested properties. Consider the following method signature:
+
+```java
+List<Person> findByAddressZipCode(ZipCode zipCode);
+```
+Assume a Person has an Address with a ZipCode. In that case, the method creates the property traversal x.address.zipCode. The resolution algorithm starts by interpreting the entire part (AddressZipCode) as the property and checks the domain class for a property with that name (uncapitalized). If the algorithm succeeds, it uses that property. If not, the algorithm splits up the source at the camel case parts from the right side into a head and a tail and tries to find the corresponding property — in our example, AddressZip and Code. If the algorithm finds a property with that head, it takes the tail and continues building the tree down from there, splitting the tail up in the way just described. If the first split does not match, the algorithm moves the split point to the left (Address, ZipCode) and continues.
+
+Although this should work for most cases, it is possible for the algorithm to select the wrong property. Suppose the Person class has an addressZip property as well. The algorithm would match in the first split round already, choose the wrong property, and fail (as the type of addressZip probably has no code property).
+
+To resolve this ambiguity you can use _ inside your method name to manually define traversal points. So our method name would be as follows:
+
+```java
+List<Person> findByAddress_ZipCode(ZipCode zipCode);
+```
+Because we treat the underscore character as a reserved character, we strongly advise following standard Java naming conventions (that is, not using underscores in property names but using camel case instead).
 
 
