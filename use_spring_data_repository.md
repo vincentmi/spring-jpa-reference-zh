@@ -1113,6 +1113,115 @@ QUser.user.firstname.eq("Dave").and(QUser.user.lastname.eq("Matthews"))
 
 >  通常从方法的返回类型中解析类型信息。 由于该信息不一定与域类型匹配，因此使用```QuerydslPredicate```的root属性可能是个好主意。
 
+以下示例显示如何在方法签名中使用```@QuerydslPredicate```：
+
+```java
+@Controller
+class UserController {
+
+  @Autowired UserRepository repository;
+
+  @RequestMapping(value = "/", method = RequestMethod.GET)
+  String index(Model model, @QuerydslPredicate(root = User.class) Predicate predicate,    //(1)
+          Pageable pageable, @RequestParam MultiValueMap<String, String> parameters) {
+
+    model.addAttribute("users", repository.findAll(predicate, pageable));
+
+    return "index";
+  }
+}
+```
+
+(1)  	解析查询字符串产生 ```Predicate``` 应用到 ```User```.
+
+默认绑定方式:
+
+- 简单属性对象绑定为```eq```
+- 集合对象,比如 Properties 绑定为```contains```
+- 简单属性的集合 绑定为  ```in```
+
+可以通过```@QuerydslPredicate```的```bindings```属性或通过使用Java 8默认方法并将```QuerydslBinderCustomizer```方法添加到存储库接口来自定义这些绑定。
+
+```java
+interface UserRepository extends CrudRepository<User, String>,
+                                 QuerydslPredicateExecutor<User>,   //1             
+                                 QuerydslBinderCustomizer<QUser> {  //2          
+  @Override
+  default void customize(QuerydslBindings bindings, QUser user) {
+
+    bindings.bind(user.username).first((path, value) -> path.contains(value))     //3
+    bindings.bind(String.class)
+      .first((StringPath path, String value) -> path.containsIgnoreCase(value)); //4
+    bindings.excluding(user.password);//5                                           
+  }
+}
+```
+
+(1) ```QuerydslPredicateExecutor```提供对```Predicate```的特定查找器方法的访问。
+(2) 存储库接口上定义的```QuerydslBinderCustomizer```会自动获取并快捷方式```@QuerydslPredicate（bindings = ...）```。
+(3) 将username属性的绑定定义为简单包含绑定。
+(4) 将String属性的默认绑定定义为不区分大小写的包含匹配项。
+(5)  从谓词解析中排除password属性。
+
+### 4.8.4 仓库填充
+
+如果您使用Spring JDBC模块，您可能熟悉使用SQL脚本填充DataSource的支持。 虽然它不使用SQL作为数据定义语言，但它在存储库级别上可以使用类似的抽象，因为它必须与存储无关。 因此，填充程序支持XML（通过Spring的OXM抽象）和JSON（通过Jackson）来定义用于填充存储库的数据。
+
+假设您有一个文件data.json，其中包含以下内容：
+
+例47.在JSON中定义的数据
+
+```json
+
+[ { "_class" : "com.acme.Person",
+ "firstname" : "Dave",
+  "lastname" : "Matthews" },
+  { "_class" : "com.acme.Person",
+ "firstname" : "Carter",
+  "lastname" : "Beauford" } ]
+
+```
+
+您可以使用Spring Data Commons中提供的存储库命名空间的populator元素来填充存储库。 要将前面的数据填充到PersonRepository，请声明类似于以下内容的populator：
+
+示例48.声明Jackson存储库填充程序
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:repository="http://www.springframework.org/schema/data/repository"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+    https://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/data/repository
+    https://www.springframework.org/schema/data/repository/spring-repository.xsd">
+  <repository:jackson2-populator locations="classpath:data.json" />
+</beans>
+```
+
+前面的声明导致由Jackson的 ```ObjectMapper```读取和反序列化```data.json```文件。
+
+通过检查JSON文档的_class属性来确定解组JSON对象的类型。 基础架构最终选择适当的存储库来处理反序列化的对象。
+
+要使用XML来定义应该填充存储库的数据，可以使用unmarshaller-populator元素。 您将其配置为使用Spring OXM中提供的XML marshaller选项之一。 有关详细信息，请参阅Spring参考文档。 以下示例说明如何使用JAXB解组存储库填充程序：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:repository="http://www.springframework.org/schema/data/repository"
+  xmlns:oxm="http://www.springframework.org/schema/oxm"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+    https://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/data/repository
+    https://www.springframework.org/schema/data/repository/spring-repository.xsd
+    http://www.springframework.org/schema/oxm
+    https://www.springframework.org/schema/oxm/spring-oxm.xsd">
+  <repository:unmarshaller-populator locations="classpath:data.json"
+    unmarshaller-ref="unmarshaller" />
+  <oxm:jaxb2-marshaller contextPath="com.acme" />
+</beans>
+```
 
 
 
