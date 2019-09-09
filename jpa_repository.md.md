@@ -137,6 +137,28 @@ Spring Data JPA 提供了以下策略来检测实体是否是新的：
 
 JPA模块支持将查询手动定义为字符串或从方法名派生查询。 
 
+带有谓词的派生查询```IsStartingWith```，```StartingWith```，```StartsWith```，```IsEndingWith```，```EndingWith```，```EndsWith```，```IsNotContaining```，```NotContaining```，```NotContains```，```IsContaining```，```Containing```，包含这些查询的相应参数将被清理。这意味着如果参数包含```LIKE```识别的字符作为通配符，这些将被转义，它们只匹配为文字。可以通过设置```@EnableJpaRepositories```注释的```escapeCharacter```来配置使用的转义字符。[与使用SpEL表达式进行比较](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query.spel-expressions)。
+
+
+#### 声明查询
+
+尽管获取从方法名称派生的查询非常方便，但是可能面临这样的情况：方法名称解析器不支持要使用的关键字，或者方法名称会变得不那么优雅。 因此您可以通过命名约定使用JPA命名查询（[请参阅使用JPA命名查询获取更多信息](https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods.named-queries)），或者使用```@Query```注释查询方法（有关详细信息，请参阅使用@Query）。
+
+
+### 5.3.2. 查询的创建
+
+通常,JPA查询的创建机制与第四章的描述差不多. 以下示例显示了JPA查询方法转换为的内容：
+
+示例52.从方法名称创建查询
+
+```java
+public interface UserRepository extends Repository<User, Long> {
+  List<User> findByEmailAddressAndLastname(String emailAddress, String lastname);
+}
+```
+
+
+
 
 
 
