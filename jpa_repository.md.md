@@ -157,6 +157,356 @@ public interface UserRepository extends Repository<User, Long> {
 }
 ```
 
+> 我们使用JPA标准API创建一个查询，但实质上，这个转换为以下查询：```select u from User u where u.emailAddress = ?1 and u.lastname = ?2```。 Spring Data JPA执行属性检查并遍历嵌套属性，请参考上面的的属性表达式。
+
+下表描述了JPA支持的关键字以及包含该关键字的方法转换为：
+
+
+| 关键字 |	示例 	| JPQL 片段|
+|---|---|---|
+|And|findByLastnameAndFirstname|… where x.lastname = ?1 and x.firstname = ?2|
+|Or|findByLastnameOrFirstname|… where x.lastname = ?1 or x.firstname = ?2|
+|Is,Equals|findByFirstname,findByFirstnameIs,findByFirstnameEquals|… where x.firstname = ?1|
+|Between|findByStartDateBetween|… where x.startDate between ?1 and ?2|
+|LessThan|findByAgeLessThan|… where x.age < ?1|
+|LessThanEqual|findByAgeLessThanEqual|… where x.age <= ?1|
+|GreaterThan|findByAgeGreaterThan|… where x.age > ?1|
+|GreaterThanEqual|findByAgeGreaterThanEqual|… where x.age >= ?1|
+|After|findByStartDateAfter|… where x.startDate > ?1|
+|Before|findByStartDateBefore|… where x.startDate < ?1|
+|IsNull|findByAgeIsNull|… where x.age is null|
+|IsNotNull,NotNull|findByAge(Is)NotNull|… where x.age not null|
+|Like|findByFirstnameLike|… where x.firstname like ?1|
+|NotLike|findByFirstnameNotLike|… where x.firstname not like ?1|
+|StartingWith|findByFirstnameStartingWith|… where x.firstname like ?1 (parameter bound with appended %)|
+|EndingWith|findByFirstnameEndingWith|… where x.firstname like ?1 (parameter bound with prepended %)|
+|Containing|findByFirstnameContaining|… where x.firstname like ?1 (parameter bound wrapped in %)|
+|OrderBy|findByAgeOrderByLastnameDesc|… where x.age = ?1 order by x.lastname desc|
+|Not|findByLastnameNot|… where x.lastname <> ?1|
+|In|findByAgeIn(Collection<Age> ages)|… where x.age in ?1|
+|NotIn|findByAgeNotIn(Collection<Age> ages)|… where x.age not in ?1|
+|True|findByActiveTrue()|… where x.active = true|
+|False|findByActiveFalse()|… where x.active = false|
+|IgnoreCase|findByFirstnameIgnoreCase|… where UPPER(x.firstame) = UPPER(?1)|
+
+
+> ```In```和```NotIn```可以使用```Collection```的任何子类作为参数以及参数数组。 对于同一逻辑运算符的其他语法版本，请选中“存储库查询关键字”。
+
+
+### 5.3.3 使用JPA命名查询
+
+> 这些示例使用```<named-query />```元素和```@NamedQuery```注解。 必须在JPA查询语言中定义这些配置元素的查询。 当然，您也可以使用```<named-native-query />```或```@NamedNativeQuery```。 这些元素允许您通过失去数据库平台独立性来在使用原生SQL中定义查询。
+
+#### XML命名查询定义
+
+要使用XML配置，请将必要的```<named-query />```元素添加到位于类路径的```META-INF```文件夹中的```orm.xml``` JPA配置文件中。 通过使用某些已定义的命名约定，可以自动调用命名查询。 有关详细信息，请参阅下文。
+
+例53. XML命名查询配置
+
+```xml
+<named-query name="User.findByLastname">
+  <query>select u from User u where u.lastname = ?1</query>
+</named-query>
+```
+
+这个查询有一个特定的名称,用于在运行时进行查找.
+
+### 基于注解的配置
+
+基于注解的配置具有不需要编辑另一个配置文件的优点，从而降低了维护工作量。 您需要为每个新的查询声明重新编译域类，从而为此获益。
+
+示例54.基于注释的命名查询配置
+
+```java
+@Entity
+@NamedQuery(name = "User.findByEmailAddress",
+  query = "select u from User u where u.emailAddress = ?1")
+public class User {
+
+}
+```
+
+#### 定义接口
+
+要允许执行这些命名查询，请按如下所示指定```UserRepository```：
+
+例55. ```UserRepository```中的查询方法声明
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+
+  List<User> findByLastname(String lastname);
+
+  User findByEmailAddress(String emailAddress);
+}
+```
+
+Spring Data尝试将对这些方法的调用解析为命名查询，从配置的域类的简单名称开始，后跟由点分隔的方法名称。 因此，前面的示例将使用在examlpe中定义的命名查询，而不是尝试从方法名称创建查询。
+
+### 5.3.4 使用```@Query```
+
+使用命名查询来声明实体查询是一种有效的方法，适用于少量查询。 由于查询本身与执行它们的Java方法相关联，因此您实际上可以使用Spring Data JPA ```@Query```注释直接绑定它们，而不是将它们注释到域类。 这将域类从特定于持久性的信息中释放出来，并将查询与存储库接口共同定位。
+
+对查询方法进行注解的查询优先于使用```@namedQuery```定义的查询或在```orm.xml```中声明的命名查询。
+
+以下示例显示使用```@Query```注释创建的查询：
+
+例56.使用```@Query```在查询方法中声明查询
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+  @Query("select u from User u where u.emailAddress = ?1")
+  User findByEmailAddress(String emailAddress);
+}
+```
+
+#### 使用高级的 ```LIKE``` 表达式
+
+使用```@Query```创建的手动定义查询的查询执行机制允许在查询定义中定义高级```LIKE```表达式，如以下示例所示：
+
+例57. ```@Query```中的高级类似表达式
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+  @Query("select u from User u where u.firstname like %?1")
+  List<User> findByFirstnameEndsWith(String firstname);
+}
+```
+
+在前面的示例中，识别了```LIKE```的分隔符```%```，并将查询转换为有效的```JPQL```查询（删除```％```）。 在执行查询时，传递给方法调用的参数将使用先前识别的```LIKE```模式进行扩充。
+
+
+####  源生查询
+
+```@Query```注释允许通过将```nativeQuery```标志设置为```true```来运行源生查询，如以下示例所示：
+
+例58.使用@Query在查询方法中声明本机查询
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+  @Query(value = "SELECT * FROM USERS WHERE EMAIL_ADDRESS = ?1", nativeQuery = true)
+  User findByEmailAddress(String emailAddress);
+}
+```
+
+Spring Data JPA目前不支持对源生查询进行动态排序，因为它必须操纵声明的实际查询，而对于源生SQL，它无法可靠地执行。 但是，您可以通过自己指定计数查询来使用本机查询进行分页，如以下示例所示：
+
+例59.使用@Query在查询方法中声明分页的本机计数查询
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+  @Query(value = "SELECT * FROM USERS WHERE LASTNAME = ?1",
+    countQuery = "SELECT count(*) FROM USERS WHERE LASTNAME = ?1",
+    nativeQuery = true)
+  Page<User> findByLastname(String lastname, Pageable pageable);
+}
+```
+
+类似的方法也适用于命名的源生查询，方法是将```.count```后缀添加到查询副本中。 但是，您可能需要为计数查询注册结果集映射。
+
+### 5.3.5 使用排序
+
+可以通过提供```PageRequest```或直接使用```Sort```来完成排序。 ```Sort```实例的```Order```属性的取值需要与您的领域模型的属性相匹配，这意味着它们需要解析为查询中使用的属性或别名。 JPQL将其定义为状态字段路径表达式。
+
+> 使用任何不可引用的路径表达式会导致异常。
+
+但是，使用```Sort```与```@Query```一起使用可以让您潜入包含```ORDER BY```子句中的函数的非路径检查的```Order```实例。 因为Order被附加到给定的查询字符串。 默认情况下，Spring Data JPA拒绝任何包含函数调用的```Order```实例，但您可以使用```JpaSort.unsafe```添加可能不安全的顺序。
+
+以下示例使用```Sort```和```JpaSort```，包括```JpaSort```上的不安全选项：
+
+例60.使用Sort和JpaSort
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+
+  @Query("select u from User u where u.lastname like ?1%")
+  List<User> findByAndSort(String lastname, Sort sort);
+
+  @Query("select u.id, LENGTH(u.firstname) as fn_len from User u where u.lastname like ?1%")
+  List<Object[]> findByAsArrayAndSort(String lastname, Sort sort);
+}
+
+repo.findByAndSort("lannister", new Sort("firstname"));       //1         
+repo.findByAndSort("stark", new Sort("LENGTH(firstname)"));   //2     
+repo.findByAndSort("targaryen", JpaSort.unsafe("LENGTH(firstname)")); //3 
+repo.findByAsArrayAndSort("bolton", new Sort("fn_len"));              //4
+```
+
+1. 有效的```Sort```,表达式指向一个领域模型的属性.
+2. 无效的 ```Sort``` 包含了函数,抛出异常
+3. 有效的 ```Sort``` 包含了 ```unsafe```的 ```Order```
+4. 有效的 ```Sort``` 包含了指向别名的函数
+
+### 5.3.6 使用命名的参数
+
+默认情况下，Spring Data JPA使用基于位置的参数绑定，如前面所有示例中所述。 这使得查询方法在重构参数位置时容易出错。 要解决此问题，可以使用```@Param```注解为方法参数指定具体名称并在查询中绑定名称，如以下示例所示：
+
+例61.使用命名参数
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+  @Query("select u from User u where u.firstname = :firstname or u.lastname = :lastname")
+  User findByLastnameOrFirstname(@Param("lastname") String lastname,
+                                 @Param("firstname") String firstname);
+}
+```
+
+> 方法参数根据它们在定义的查询中的顺序进行切换。
+> 
+> 从版本4开始，Spring完全支持基于-parameters编译器标志的Java 8参数名称发现。 通过在构建中使用此标志作为调试信息的替代方法，可以省略命名参数的@Param注释。
+> 
+
+### 5.3.7 使用SpEL表达式
+
+从Spring Data JPA 1.4版开始，我们支持在使用```@Query```定义的手动定义查询中使用受限制的```SpEL```模板表达式。 在执行查询时，将根据预定义的变量集评估这些表达式。 Spring Data JPA支持名为```entityName```的变量。 它的用法是```select x from #{#entityName} x```。 它插入与给定存储库关联的域类型的```entityName```。 ```entityName```的解析方式如下：如果域类型在```@Entity```注释上设置了```name```属性，则使用它。 否则，使用域类型的简单类名。
+
+
+以下示例演示了查询字符串中```＃{#entityName}```表达式的一个用例，您希望使用查询方法和手动定义的查询来定义存储库接口：
+
+示例62.在存储库查询方法中使用SpEL表达式 -  entityName
+
+```java
+@Entity
+public class User {
+  @Id
+  @GeneratedValue
+  Long id;
+  String lastname;
+}
+
+public interface UserRepository extends JpaRepository<User,Long> {
+  @Query("select u from #{#entityName} u where u.lastname = ?1")
+  List<User> findByLastname(String lastname);
+}
+```
+
+要避免在```@Query```注解的查询字符串中声明实际的实体名称，可以使用```＃{#entityName}```变量。
+
+> 可以使用```@Entity```批注自定义```entityName```。 SpEL表达式不支持```orm.xml``中自定义的名称。
+
+当然，您可以直接在查询声明中使用```User```，但这需要你来更高查询声明。 对```#entityName```的引用将```User```类的可以将他在需要的时候映射到另外一个实体（例如，使用```@Entity（name =“MyUser”）```）。
+
+查询字符串中```＃{#entityName}```表达式的另一个用例是，如果要为具体领域类型定义具有专用存储库接口的通用存储库接口。 要在具体接口上不重复自定义查询方法的定义，可以在通用存储库接口中的```@Query```批注的查询字符串中使用实体名称表达式，如以下示例所示：
+
+示例63.在存储库查询方法中使用SpEL表达式 - 具有继承的entityName
+
+```java
+@MappedSuperclass
+public abstract class AbstractMappedType {
+  …
+  String attribute
+}
+@Entity
+public class ConcreteType extends AbstractMappedType { … }
+@NoRepositoryBean
+public interface MappedTypeRepository<T extends AbstractMappedType>
+  extends Repository<T, Long> {
+  @Query("select t from #{#entityName} t where t.attribute = ?1")
+  List<T> findAllByAttribute(String attribute);
+}
+
+public interface ConcreteRepository
+  extends MappedTypeRepository<ConcreteType> { … }
+```
+
+In the preceding example, the MappedTypeRepository interface is the common parent interface for a few domain types extending AbstractMappedType. It also defines the generic findAllByAttribute(…) method, which can be used on instances of the specialized repository interfaces. If you now invoke findByAllAttribute(…) on ConcreteRepository, the query becomes select t from ConcreteType t where t.attribute = ?1.
+
+在前面的示例中，```MappedTypeRepository```接口是扩展```AbstractMappedType```的几种领域类型的公共父接口。 它还定义了通用的```findAllByAttribute（...）```方法，该方法可用于专用存储库接口的实例。 如果现在在```ConcreteRepository```上调用```findByAllAttribute（...）```，则查询变为 ```select t from ConcreteType t where t.attribute = ?1```.
+
+操作参数的SpEL表达式也可用于操作方法参数。 在这些SpEL表达式中，实体名称不能适应，但参数可以使用。 可以通过名称或索引访问它们，如以下示例所示。
+
+示例64.在存储库查询方法中使用SpEL表达式 - 访问参数。
+
+```java
+@Query("select u from User u where u.firstname = ?1 and u.firstname=?#{[0]} and u.emailAddress = ?#{principal.emailAddress}")
+List<User> findByFirstnameAndCurrentUserWithCustomQuery(String firstname);
+```
+
+For like-conditions one often wants to appen % to the beginning or the end of a String valued parameter. This can be done by appending or prefixing a bind parameter marker or a SpEL expression with %. Again the following example demonstrates this.
+
+对于```LIKE```条件，人们通常希望将```％```附加到字符串值参数的开头或结尾。 这可以通过使用```％```附加到参数标记上或SpEL表达式来完成。 以下示例再次演示了这一点。
+
+示例65.在存储库查询方法中使用Spel表达式 - 通配符快捷方式。
+
+```java
+@Query("select u from User u where u.lastname like %:#{[0]}% and u.lastname like %:lastname%")
+List<User> findByLastnameWithSpelExpression(@Param("lastname") String lastname);
+```
+
+当使用Like条件时,如果数据源是不安全的,我们应该对值进行清理避免他们使用通配符,让攻击者获取到超出许可范围的数据.为此SpEL上下文中提供了```escape(string)```方法.它使用第二个参数中的单个字符为第一个参数中```_```和```％```的所有实例添加前缀,结合JPQL和标准SQL中提供的类似表达式的escape子句，可以轻松清理绑定的参数。 
+
+示例66.在存储库查询方法中使用SpEL表达式 - 清理输入值。
+
+```java
+@Query("select u from User u where u.firstname like %?#{escape([0])}% escape ?#{escapeCharacter()}")
+List<User> findContainingEscaped(String namePart);
+```
+
+上例的接口方法```findContainingEscaped("Peter_")```将会找到```Peter_Parker```但是不会找到```Peter Parker```.可以通过设置```@EnableJpaRepositories ```注解的```escapeCharacter```来配置要使用的转义符.请注意,方法```escape(string)```可以用在```SpEL```上下文中只会转义SQL和JPQL标准通配符```_```和```%```,如果底层数据库或JPA的实现支持其他通配符.则这些通配符不会被转义.
+
+### 5.3.8 修改语句
+
+前面的所有部分都描述了如何声明查询以访问给定的实体或实体集合。您可以使用“Spring数据存储库的自定义实现”中描述的工具添加自定义修改行为。由于这种方法可以很自由的进行自定义，您可以通过使用```@Modify```注释查询方法来修改只需要参数绑定的查询，如下例所示：
+
+例67 声明操作查询
+
+```java
+@Modifying
+@Query("update User u set u.firstname = ?1 where u.lastname = ?2")
+int setFixedFirstnameFor(String firstname, String lastname);
+```
+这样做会将查询定义为更新而不是查询.由于```EntityManager```在更新执行后会包含过期的实体.我们并不会自动清理他们.因为这实际上会删除```EntityManager```中等待更新的更改.如果希望自动清除```EntityManager```中的这些实体.可以将```@Modifying ```注解的```clearAutomatically```属性设置为```true```.
+
+```@Modifying```注释只与```@Query```注释结合使用。派生查询方法或自定义方法不需要此批注。
+
+#### 派生查询语句
+
+Spring Data JPA 还支持派生的删除语句，这样可以避免显式声明JPSQL查询，如下例所示：
+
+例68。使用派生的删除查询 
+
+```java
+interface UserRepository extends Repository<User, Long> {
+  void deleteByRoleId(long roleId);
+  @Modifying
+  @Query("delete from User u where user.role.id = ?1")
+  void deleteInBulkByRoleId(long roleId);
+}
+```
+
+
+尽管```deleteByroleid（…）```方法看起来基本上生成的结果与```deleteBulkByRoleID（…）```相同，但这两个方法声明在执行方式上有一个重要区别。顾名思义，后一种方法针对数据库发出一个JPQL查询（在注释中定义的查询）。这意味着即使当前加载的User实例也看不到调用的生命周期回调。 
+
+
+为了确保生命周期查询被实际调用，对```deleteByroleid（…）```的调用执行一个查询，然后逐个删除返回的实例，以便持久性提供程序可以实际调用这些实体上的删除前的回调。
+
+
+事实上，派生的delete查询是执行查询，然后对结果调用```CrudRepository.delete(Iterable<User> users) ```并使行为与```CrudRepository```中其他```delete（…）```方法的实现保持同步的快捷方式。
+
+### 5.3.9. 应用查询提示
+
+要将JPA查询提示应用于存储库接口中声明的查询，可以使用```@QueryHints```批注。 它需要一组JPA ```@QueryHint```注解以及一个布尔标志来潜在地禁用应用于应用分页时触发的附加计数查询的提示，如以下示例所示：
+
+示例69.将QueryHints与存储库方法一起使用
+
+```java
+public interface UserRepository extends Repository<User, Long> {
+
+  @QueryHints(value = { @QueryHint(name = "name", value = "value")},forCounting = false)
+  Page<User> findByLastname(String lastname, Pageable pageable);
+}
+```
+
+前面的声明将为实际查询应用配置的```@QueryHint```，但并不应用到计数查询中。 
+
+
+
+
+
+
+
+
+
+
 
 
 
