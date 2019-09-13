@@ -421,8 +421,6 @@ In the preceding example, the MappedTypeRepository interface is the common paren
 List<User> findByFirstnameAndCurrentUserWithCustomQuery(String firstname);
 ```
 
-For like-conditions one often wants to appen % to the beginning or the end of a String valued parameter. This can be done by appending or prefixing a bind parameter marker or a SpEL expression with %. Again the following example demonstrates this.
-
 对于```LIKE```条件，人们通常希望将```％```附加到字符串值参数的开头或结尾。 这可以通过使用```％```附加到参数标记上或SpEL表达式来完成。 以下示例再次演示了这一点。
 
 示例65.在存储库查询方法中使用Spel表达式 - 通配符快捷方式。
@@ -498,12 +496,53 @@ public interface UserRepository extends Repository<User, Long> {
 
 前面的声明将为实际查询应用配置的```@QueryHint```，但并不应用到计数查询中。 
 
+### 5.3.10 配置 Fetch- 和 LoadGraphs
 
+JPA 2.1规范引入了对指定Fetch-和LoadGraphs的支持，我们也支持```@EntityGraph```注解，它允许您引用```@NamedEntityGraph```定义。 您可以在实体上使用该注解来配置生成的查询的获取计划。 可以使用```@EntityGraph```注解上的```type```属性配置提取的类型（Fetch或load）。 有关进一步的参考，请参阅JPA 2.1 Spec 3.7.4。
 
+以下示例显示如何在实体上定义命名实体图：
 
+示例70.在实体上定义命名实体图。
 
+```java
+@Entity
+@NamedEntityGraph(name = "GroupInfo.detail",
+  attributeNodes = @NamedAttributeNode("members"))
+public class GroupInfo {
+  // default fetch mode is lazy.
+  @ManyToMany
+  List<GroupMember> members = new ArrayList<GroupMember>();
+  …
+}
+```
 
+以下示例显示如何在存储库查询方法上引用命名实体图：
 
+例71.在存储库查询方法上引用命名实体图定义。
+
+```java 
+@Repository
+public interface GroupRepository extends CrudRepository<GroupInfo, String> {
+  @EntityGraph(value = "GroupInfo.detail", type = EntityGraphType.LOAD)
+  GroupInfo getByGroupName(String name);
+}
+```
+
+也可以使用```@EntityGraph```定义ad hoc实体图。 提供的```attributePaths```将转换为相应的```EntityGraph```，而无需将```@NamedEntityGraph```显式添加到您的域类型中，如以下示例所示：
+
+例子72.在存储库查询方法上使用AD-HOC实体图定义。
+
+```java
+@Repository
+public interface GroupRepository extends CrudRepository<GroupInfo, String> {
+  @EntityGraph(attributePaths = { "members" })
+  GroupInfo getByGroupName(String name);
+}
+```
+
+### 5.3.11.投影
+
+Spring Data查询方法通常返回由存储库管理的聚合根的一个或多个实例。 但是，有时可能需要根据这些类型的某些属性创建投影。 Spring Data允许建模专用返回类型，以更有选择地检索托管聚合的部分视图。
 
 
 
