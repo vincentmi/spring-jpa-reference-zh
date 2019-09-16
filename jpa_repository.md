@@ -544,8 +544,26 @@ public interface GroupRepository extends CrudRepository<GroupInfo, String> {
 
 Spring Data查询方法通常返回由存储库管理的聚合根的一个或多个实例。 但是，有时可能需要根据这些类型的某些属性创建投影。 Spring Data允许建模专用返回类型，以更有选择地检索托管聚合的部分视图。
 
+假设有  一个存储库和聚合根类型，如以下示例：
 
+```java
+class Person {
 
+  @Id UUID id;
+  String firstname, lastname;
+  Address address;
+
+  static class Address {
+    String zipCode, city, street;
+  }
+}
+
+interface PersonRepository extends Repository<Person, UUID> {
+  Collection<Person> findByLastname(String lastname);
+}
+```
+
+现在想象一下，我们只想检索这个人的名字属性。spring数据为实现这一目标提供了什么手段？这一章的其余部分回答了这个问题。
 
 
 
