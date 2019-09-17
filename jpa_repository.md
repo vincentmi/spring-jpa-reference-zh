@@ -563,9 +563,248 @@ interface PersonRepository extends Repository<Person, UUID> {
 }
 ```
 
-现在想象一下，我们只想检索这个人的名字属性。spring数据为实现这一目标提供了什么手段？这一章的其余部分回答了这个问题。
+假设我们只想检索这个人的名字属性。Spring Data 为实现这一目标提供了什么手段？这一章的其余部分回答了这个问题。
+
+#### 基于接口的投影
+
+将查询结果限制为只返回名称属性的最容易的方式是如下例所示,定义一个只暴露你需要的属性的getter方法的接口:
+
+例74。检索属性子集的投影接口
+
+```java
+interface NamesOnly {
+  String getFirstname();
+  String getLastname();
+}
+```
+
+比较重要的一点是,这里定义的属性与聚合根的属性需要完全匹配.然后使用下面的方式定义查询:
+
+例75。使用基于接口的投影和查询方法的存储库
+
+```java
+interface PersonRepository extends Repository<Person, UUID> {
+  Collection<NamesOnly> findByLastname(String lastname);
+}
+```
+
+查询执行引擎在运行时为返回的每个元素创建该接口的代理实例，并将调用转发到目标对象的公开方法。
+
+投影可以递归使用。如果还希望包含一些地址信息，请为此创建一个投影接口，并从```getaddress（）```的声明中返回该接口，如下例所示：
+
+例76。检索属性子集的投影接口
+
+```java
+interface PersonSummary {
+  String getFirstname();
+  String getLastname();
+  AddressSummary getAddress();
+  interface AddressSummary {
+    String getCity();
+  }
+}
+```
+
+在方法调用时，获取目标实例的address属性，并依次将其包装到投影代理中。
+
+#### 闭合投影
+一个投影接口，其访问器方法都与目标聚合的属性匹配，被认为是一个闭合投影。以下示例（我们在本章前面也使用了该示例）是一个闭合投影：
+
+```java
+interface NamesOnly {
+  String getFirstname();
+  String getLastname();
+}
+```
+
+如果使用封闭投影，Spring Data 可以优化查询的执行，因为我们知道支持投影代理所需的所有属性。有关更多详细信息，请参阅参考文档中特定于模块的部分。
+
+#### 开放投影
+
+投影接口中的访问器方法也可以使用```@Value```注释计算新值，如下例所示
+
+```java
+interface NamesOnly {
+
+  @Value("#{target.firstname + ' ' + target.lastname}")
+  String getFullName();
+  …
+}
+```
+
+```target```变量中可以使用聚合根的所以属性。使用```@Value```的投影接口是一个开放的投影。在这种情况下，Spring Data 不能应用查询执行优化，因为SpEL表达式可以使用聚合根的所有属性。
+
+```@Value```中使用的表达式不应太复杂-要避免在字符串变量中编程。对于非常简单的表达式，也可以使用JAVA 8 中引入的默认方法，如下面的示例所示：
+
+```java
+interface NamesOnly {
+
+  String getFirstname();
+  String getLastname();
+  default String getFullName() {
+    return getFirstname.concat(" ").concat(getLastname());
+  }
+}
+```
+
+这种方法要求您能够完全基于投影接口上公开的其他访问器方法来实现逻辑。第二种方法是在Spring Bean中实现自定义逻辑，然后从SpEL表达式调用该逻辑，如下例所示：
+
+```java
+@Component
+class MyBean {
+
+  String getFullName(Person person) {
+    …
+  }
+}
+
+interface NamesOnly {
+  @Value("#{@myBean.getFullName(target)}")
+  String getFullName();
+  …
+}
+```
+
+注意SpEL表达式如何引用```myBean```并调用```getfullname（…）```方法并将投影目标作为方法参数转发。由SpEL表达式求值支持的方法也可以使用方法参数，然后可以从表达式引用这些参数。方法参数可通过名为```args```的对象数组获得。下面的示例演示如何从```args```数组中获取方法参数
+
+```java
+interface NamesOnly {
+  @Value("#{args[0] + ' ' + target.firstname + '!'}")
+  String getSalutation(String prefix);
+}
+```
+
+同样,如前所述，对于更复杂的表达式，应该使用Spring Bean 并让表达式调用Bean的方法.
 
 
+#### 基于Class的投影(DTOs)
+
+定义投影的另一种方法是使用值类型DTO（Data Transfer Objects），该DTO保存应该检索的字段的属性。这些DTO类型的使用方式与使用投影接口的方式完全相同，只是不会发生代理，也不会应用嵌套投影。
+
+
+如果store通过限制要加载的字段来优化查询执行，则要加载的字段由公开的构造函数的参数名确定。
+
+```java
+class NamesOnly {
+
+  private final String firstname, lastname;
+
+  NamesOnly(String firstname, String lastname) {
+    this.firstname = firstname;
+    this.lastname = lastname;
+  }
+
+  String getFirstname() {
+    return this.firstname;
+  }
+
+  String getLastname() {
+    return this.lastname;
+  }
+
+  // equals(…) and hashCode() implementations
+}
+```
+
+##### 避免投影DTO的样板代码
+ 通过使用project lombok，您可以极大地简化DTO的代码，projectlombok提供了一个```@Value```注释（不要与前面接口示例中显示的spring的```@Value```注释混淆）。如果使用project lombok的```@Value```注释，前面显示的示例DTO将变成以下内容：
+
+```java
+ @Value
+class NamesOnly {
+	String firstname, lastname;
+}
+```
+
+默认情况下，字段是```private final```，class 公开一个构造函数，该构造函数接受所有字段，并自动获取实现的```equals（…）```和```hashcode（）```方法。
+
+
+#### 动态投影
+
+到目前为止，我们使用投影类型作为集合的返回类型或元素类型。但是，您可能希望选择在调用时使用的类型（这使其成为动态的）。要应用动态投影，请使用以下示例中所示的查询方法：
+
+```java
+interface PersonRepository extends Repository<Person, UUID> {
+  <T> Collection<T> findByLastname(String lastname, Class<T> type);
+}
+```
+
+这样，该方法可用于按原样或使用投影获得骨料，如下例所示：
+
+```java
+void someMethod(PersonRepository people) {
+
+  Collection<Person> aggregates =
+    people.findByLastname("Matthews", Person.class);
+
+  Collection<NamesOnly> aggregates =
+    people.findByLastname("Matthews", NamesOnly.class);
+}
+```
+
+## 5.4 存储过程
+
+JPA 2.1规范引入了对使用JPA条件查询API调用存储过程的支持。我们引入了```@Procedure```注释，用于仓库方法上声明存储过程元数据。
+
+
+
+例85。HSQL DB中```plus1inout```过程的定义。
+
+```sql
+/;
+DROP procedure IF EXISTS plus1inout
+/;
+CREATE procedure plus1inout (IN arg int, OUT res int)
+BEGIN ATOMIC
+ set res = arg + 1;
+END
+/;
+```
+
+存储过程的元数据可以使用```@NamedStoredProcedureQuery```对实体类型注解进行设置.
+
+```java
+@Entity
+@NamedStoredProcedureQuery(name = "User.plus1", procedureName = "plus1inout", parameters = {
+  @StoredProcedureParameter(mode = ParameterMode.IN, name = "arg", type = Integer.class),
+  @StoredProcedureParameter(mode = ParameterMode.OUT, name = "res", type = Integer.class) })
+public class User {}
+```
+
+您可以通过多种方式引用存储库方法中的存储过程。要调用的存储过程可以使用```@Procedure```注释的```value```或```procedureName```属性直接定义，也可以使用```name```属性间接定义。如果未配置名称，则使用存储库方法的名称。
+
+下面的示例演示如何引用显式映射的过程：
+
+```java
+@Procedure("plus1inout")
+Integer explicitlyNamedPlus1inout(Integer arg);
+```
+
+下面的示例演示如何使用```procedureName```别名引用隐式映射的过程：
+
+```java
+@Procedure(procedureName = "plus1inout")
+Integer plus1inout(Integer arg);
+```
+
+
+下面的示例演示如何在```EntityManager```中引用显式映射的命名过程：
+
+```java
+@Procedure(name = "User.plus1IO")
+Integer entityAnnotatedCustomNamedProcedurePlus1IO(@Param("arg") Integer arg);
+```
+
+下面的示例演示如何使用方法名引用EntityManager中隐式命名的存储过程：
+
+```java
+@Procedure
+Integer plus1(@Param("arg") Integer arg);
+```
+
+## 5.5 规范
+
+ 
 
 
 
