@@ -802,10 +802,119 @@ Integer entityAnnotatedCustomNamedProcedurePlus1IO(@Param("arg") Integer arg);
 Integer plus1(@Param("arg") Integer arg);
 ```
 
-## 5.5 规范
+## 5.5 Specification
 
+JPA 2 引入了一个标准API,你可以使用它以编程的方式构建查询.通过编写```criteria```你定义领域类的查询的```where```子句.再退一步，可以将这些条件视为JPA条件API约束所描述的实体上的谓词。
+
+Spring JPA 采用了 Eric Evans 的 <领域驱动设计>(DDD) 书中的概念,遵循相同的语义,并提供JPA crieria API.为了支持这个规范你可以将你的仓库接口扩展自```JpaSpecificationExecutor```,如下例所示:
+
+```java
+public interface CustomerRepository extends CrudRepository<Customer, Long>, JpaSpecificationExecutor {
+ …
+}
+```
+
+附加的接口有一些方法，可以让您以各种方式执行规范。例如，```findAll```方法返回与规范匹配的所有实体，如下例所示：
+
+```java
+List<T> findAll(Specification<T> spec);
+```
+
+```Specification``` 接口定义如下:
+
+```java
+public interface Specification<T> {
+  Predicate toPredicate(Root<T> root, CriteriaQuery<?> query,
+            CriteriaBuilder builder);
+}
+```
+
+规范可以很容易的在实体之上构建一组可扩展的谓词,然后可以与```JpaRepositiry```组合使用,而无需为每个所需的组合声明方法.如下所示
+
+```java
+public class CustomerSpecs {
+
+  public static Specification<Customer> isLongTermCustomer() {
+    return new Specification<Customer>() {
+      public Predicate toPredicate(Root<Customer> root, CriteriaQuery<?> query,
+            CriteriaBuilder builder) {
+
+         LocalDate date = new LocalDate().minusYears(2);
+         return builder.lessThan(root.get(_Customer.createdAt), date);
+      }
+    };
+  }
+
+  public static Specification<Customer> hasSalesOfMoreThan(MonetaryAmount value) {
+    return new Specification<Customer>() {
+      public Predicate toPredicate(Root<T> root, CriteriaQuery<?> query,
+            CriteriaBuilder builder) {
+
+         // build query here
+      }
+    };
+  }
+}
+```
+
+诚然，样板的代码还有改进的空间（可以使用Java 8的闭包）减少，但是客户代码会变得更好，如你在本节后面会看到的。```_Customer```类型是使用JPA元模型生成器生成的元模型类型（请参阅hibernate实现的文档中的示例）。因此，表达式```_Customer.createdAt```假定```Customer```具有```Date```类型的```createdAt```属性。除此之外，我们在业务需求抽象层上表达了一些标准，并创建了可执行规范。因此，客户可以使用以下规范：
+
+```java
+List<Customer> customers = customerRepository.findAll(isLongTermCustomer());
+```
+
+
+为什么不为这种数据访问创建一个查询呢？使用单个```Specification```并不能比简单的查询声明获得很多好处。当您将```Specification```组合起来创建新的```Specification```对象时，```Specification```的威力就非常强大。您可以通过我们提供的默认```Specification```方法来实现这一点，这些方法用于构建类似于以下内容的表达式：
+
+```java
+MonetaryAmount amount = new MonetaryAmount(200.0, Currencies.DOLLAR);
+List<Customer> customers = customerRepository.findAll(
+  isLongTermCustomer().or(hasSalesOfMoreThan(amount)));
+```
+
+```Specification```提供一些胶合代码的默认方法来链接和组合```Specification```实例.这些方法允许您通过创建新的```Specification```实现并将它们与现有实现相结合来扩展数据访问层。
+
+
+## 使用 Example 进行查询
+
+### 5.6.1 简介
+
+这一节介绍使用```Example```进行查询并解释如何使用它.
+
+示例查询（QBE）是一种用户友好的查询技术，具有简单的界面。它允许动态创建查询，并且不需要您编写包含字段名的查询。事实上，按QBE根本不需要使用特定于存储的查询语言编写查询。
+
+### 5.6.2 使用
+
+```Example```查询分为三部分
+
+- Probe : 带有填充字段的域对象的实际实例
+- ExampleMatcher : ExampleMatcher包含如何匹配特点字段的详细信息,他可以跨多个示例重用.
+- Example: 有```Probe```和```ExampleMatcher```组成.用于生成查询.
+
+```Example``` 查询适用一下场景
+
+- 使用一组静态或动态约束查询数据存储。
+- 经常重构域对象，而不必担心破坏现有查询。
+- 独立于底层数据存储api工作。
+
+```Example``` 查询的一些限制
+- 不支持嵌套或分组的属性约束，例如  firstname = ?0 或者 (firstname = ?1 and lastname = ?2).
+- 仅支持字符串的```start```/```contains```/```ends```/```regex```匹配和其他属性类型的精确匹配。
+
+在开始按示例查询之前，您需要有一个域对象。要开始，请为存储库创建一个接口，如下例所示：
  
+```java
+public class Person {
 
+  @Id
+  private String id;
+  private String firstname;
+  private String lastname;
+  private Address address;
+
+  // … getters and setters omitted
+}
+```
 
 
 
