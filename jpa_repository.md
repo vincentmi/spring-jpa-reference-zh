@@ -917,5 +917,54 @@ public class Person {
 ```
 
 
+The preceding example shows a simple domain object. You can use it to create an Example. By default, fields having null values are ignored, and strings are matched by using the store specific defaults. Examples can be built by either using the of factory method or by using ExampleMatcher. Example is immutable. The following listing shows a simple Example:
+前面的示例展示了一个简单的域对象。你可以用它来创建一个```Example```。默认情况下，将忽略具有空值的字段，并使用特定于存储区的默认值来匹配字符串。```Example```可以使用工厂方法或```ExampleMatcher```来构建示例。```Example```是不可变的。下面的列表显示了一个简单的示例：
+
+```java
+Person person = new Person();  //(1)                        
+person.setFirstname("Dave");       //(2)                   
+Example<Person> example = Example.of(person); //(3) 
+```
+
+1) 创建一个领域对象的新实例
+2) 设置查询的属性
+3) 创建```Example```
+
+
+Examples are ideally be executed with repositories. To do so, let your repository interface extend QueryByExampleExecutor<T>. The following listing shows an excerpt from the QueryByExampleExecutor interface:
+理想情况下，```Example```是使用存储库执行的。为此，让存储库接口扩展```QueryByExampleExecutor<T>```。以下列表显示了```QueryByExampleExecutor```接口的摘录：
+
+```java
+public interface QueryByExampleExecutor<T> {
+  <S extends T> S findOne(Example<S> example);
+  <S extends T> Iterable<S> findAll(Example<S> example);
+  // … more functionality omitted.
+}
+```
+
+### 5.6.3 Example Matcher
+
+示例不限于默认设置。可以使用```ExampleMatcher```为字符串匹配、空处理和特定于属性的设置指定自己的默认值，如下例所示：
+
+```java
+Person person = new Person();     //(1)                      
+person.setFirstname("Dave");          //(2)                 
+
+ExampleMatcher matcher = ExampleMatcher.matching() //(3)     
+  .withIgnorePaths("lastname")                     //(4)    
+  .withIncludeNullValues()                         //(5)
+  .withStringMatcherEnding();                      //(6)    
+
+Example<Person> example = Example.of(person, matcher); //(7)
+```
+
+1) 创建领域对象的新实例.
+2) 设置属性.
+3) 创建一个 ```ExampleMatcher```用于匹配所有值,就算没有进一步的配置,这个阶段也可以进行使用. to expect all values to match. It is usable at this stage even without further configuration.
+Construct a new ExampleMatcher to ignore the lastname property path.
+Construct a new ExampleMatcher to ignore the lastname property path and to include null values.
+Construct a new ExampleMatcher to ignore the lastname property path, to include null values, and to perform suffix string matching.
+Create a new Example based on the domain object and the configured ExampleMatcher.
+
 
 
