@@ -960,11 +960,45 @@ Example<Person> example = Example.of(person, matcher); //(7)
 
 1) 创建领域对象的新实例.
 2) 设置属性.
-3) 创建一个 ```ExampleMatcher```用于匹配所有值,就算没有进一步的配置,这个阶段也可以进行使用. to expect all values to match. It is usable at this stage even without further configuration.
-Construct a new ExampleMatcher to ignore the lastname property path.
-Construct a new ExampleMatcher to ignore the lastname property path and to include null values.
-Construct a new ExampleMatcher to ignore the lastname property path, to include null values, and to perform suffix string matching.
-Create a new Example based on the domain object and the configured ExampleMatcher.
+3) 创建一个 ```ExampleMatcher```用于匹配所有值,就算没有进一步的配置,这个阶段也可以进行使用. 
+4) 构造一个新的```ExampleMatcher```忽略掉```lastname```路径的属性.
+5) 构造一个新的```ExampleMatcher```忽略掉```lastname```路径的属性并且包含```Null```值.
+6) 构造一个新的```ExampleMatcher```忽略掉```lastname```路径的属性并且包含```Null```值.并且执行一个字符串后缀匹配.
+7) 根据领域对象和配置好的```ExampleMatcher```创建一个```Example```.  
+
+
+默认情况下，```ExampleMatcher```希望探测器上设置的所有值都匹配。如果要获得与隐式定义的任何谓词匹配的结果，请使用```ExampleMatcher.matchingAny()```。
+
+您可以指定单个属性的行为（如```firstname```和```lastname```，或者嵌套属性```address.city```。您可以使用匹配选项和区分大小写来调整它，如下面的示例所示：
+
+```java
+ExampleMatcher matcher = ExampleMatcher.matching()
+  .withMatcher("firstname", endsWith())
+  .withMatcher("lastname", startsWith().ignoreCase());
+}
+```
+
+配置匹配器选项的另一种方法是使用闭包（在Java 8中支持）。此方法创建一个回调，要求实现者修改匹配器。你不需要返回匹配器，因为配置选项保存在匹配器实例中。以下示例显示使用闭包的匹配器：
+
+```java
+ExampleMatcher matcher = ExampleMatcher.matching()
+  .withMatcher("firstname", match -> match.endsWith())
+  .withMatcher("firstname", match -> match.startsWith());
+}
+```
+
+```Example```创建的查询使用了配置的合并视图.默认匹配设置可以在```ExampleMatcher```的级别进行设置设置，而个别设置可以在特定的属性路径进行应用。在```ExampleMatcher```设置的属性会被属性路径继承.除非他们是显式定义的.属性修补程序上的设置的优先级高于默认设置。下表描述了各种示例匹配器设置的范围：
+
+| Setting | 	Scope|
+|---|---|
+|处理NULL值|ExampleMatcher|
+|匹配字符串|ExampleMatcher和属性路径|
+|忽略属性|属性路径|
+|大小写|ExampleMatcher 和属性路径|
+|值变换|属性路径|
+
+### 5.6.4 执行 Example
+
 
 
 
