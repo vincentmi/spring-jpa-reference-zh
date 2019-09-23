@@ -1266,3 +1266,85 @@ Spring支持有多个持久性单元。但是，有时您可能希望模块化�
   </property>
 </bean>
 ```
+
+
+
+#### @Entity类和JPA映射文件的类路径扫描
+
+简单的JPA设置要求在```orm.xml```中列出所有注释映射的实体类。这同样适用于xml映射文件。spring data jpa提供了一个```ClasspathScanningPersistenceUnitPostProcessor```，它配置了一个基本包，还可以选择使用一个映射文件名模式。然后，它扫描给定的包以查找用```@Entity```或```@MappedSuperclass```注释的类，加载与文件名模式匹配的配置文件，并将它们交给jpa配置。后处理器必须配置如下：
+
+```java
+<bean class="….LocalContainerEntityManagerFactoryBean">
+  <property name="persistenceUnitPostProcessors">
+    <list>
+      <bean class="org.springframework.data.jpa.support.ClasspathScanningPersistenceUnitPostProcessor">
+        <constructor-arg value="com.acme.domain" />
+        <property name="mappingFileNamePattern" value="**/*Mapping.xml" />
+      </bean>
+    </list>
+  </property>
+</bean>
+```
+
+> 从Spring3.1开始，可以在```LocalContainerEntityManagerFactoryBean```上直接配置要扫描的包，以启用实体类的类路径扫描。有关详细信息，请参见[javadoc](https://docs.spring.io/spring/docs/current/javadoc-api/org/springframework/orm/jpa/LocalContainerEntityManagerFactoryBean.html#setPackagesToScan(java.lang.String...))。
+> 
+
+### 5.10.3 CDI集成
+
+存储库接口的实例通常由容器创建，在使用Spring Data 时，Spring是最自然的选择。Spring为创建bean实例提供了完善的支持，如创建存储库实例中所述。从版本1.1.0开始，Spring Data JPA附带了一个自定义CDI扩展，允许在CDI环境中使用存储库抽象。扩展是JAR的一部分。要激活它，在类路径中包含Spring Data JPA JAR。
+
+现在，您可以通过为```EntityManagerFactory```和```EntityManager```实现CDI生产者来设置基础结构，如下例所示：
+
+```java
+class EntityManagerFactoryProducer {
+
+  @Produces
+  @ApplicationScoped
+  public EntityManagerFactory createEntityManagerFactory() {
+    return Persistence.createEntityManagerFactory("my-presistence-unit");
+  }
+
+  public void close(@Disposes EntityManagerFactory entityManagerFactory) {
+    entityManagerFactory.close();
+  }
+
+  @Produces
+  @RequestScoped
+  public EntityManager createEntityManager(EntityManagerFactory entityManagerFactory) {
+    return entityManagerFactory.createEntityManager();
+  }
+
+  public void close(@Disposes EntityManager entityManager) {
+    entityManager.close();
+  }
+}
+```
+
+必要的设置可能因Java EE 环境而异。您可能只需要将```EntityManager```重新声明为CDI bean，如下所示：
+
+```java
+class CdiConfig {
+
+  @Produces
+  @RequestScoped
+  @PersistenceContext
+  public EntityManager entityManager;
+}
+```
+
+在前面的例子中，容器必须能够创建JPA实体管理器本身。配置所做的只是将JPA  EntityManager重新导出为CDI bean。
+
+
+Spring Data JPA CDI 扩展将所有可用的```EntityManager```实例作为CDI bean来获取，并在容器请求存储库类型的bean时为spring数据存储库创建代理。因此，获取spring数据存储库的实例就是声明```@injected```属性，如下例所示：
+
+```java
+class RepositoryClient {
+
+  @Inject
+  PersonRepository repository;
+
+  public void businessMethod() {
+    List<Person> people = repository.findAll();
+  }
+}
+```
