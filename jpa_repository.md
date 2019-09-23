@@ -999,6 +999,270 @@ ExampleMatcher matcher = ExampleMatcher.matching()
 
 ### 5.6.4 执行 Example
 
+在Spring Data Jpa中，可以对存储库使用逐例查询，如下例所示
+
+```java
+public interface PersonRepository extends JpaRepository<Person, String> { … }
+
+public class PersonService {
+  @Autowired PersonRepository personRepository;
+  public List<Person> findPeople(Person probe) {
+    return personRepository.findAll(Example.of(probe));
+  }
+}
+```
+
+> 目前，只有```SingularAttribute```可以用于属性匹配.
 
 
+属性标识符接受属性名（例如```firstname```和```lastname```）。您可以通过将属性与点（```address.city```）链接在一起来导航。您还可以通过匹配选项和区分大小写来调整它。
 
+下表显示了可以在```firstname```的字段上使用的各种```StringMatcher```选项以及使用这些选项的结果：
+
+| 匹配 | 	查询的逻辑 | 
+| --- | --- |
+|DEFAULT (case-sensitive) | firstname = ?0 |
+|DEFAULT (case-insensitive)|LOWER(firstname) = LOWER(?0)|
+|EXACT (case-sensitive)|firstname = ?0|
+|EXACT (case-insensitive)|LOWER(firstname) = LOWER(?0)|
+|STARTING (case-sensitive)|firstname like ?0 + '%'|
+|STARTING (case-insensitive)|LOWER(firstname) like LOWER(?0) + '%'|
+|ENDING (case-sensitive)|firstname like '%' + ?0|
+|ENDING (case-insensitive)|LOWER(firstname) like '%' + LOWER(?0)|
+|CONTAINING (case-sensitive)|firstname like '%' + ?0 + '%'|
+|CONTAINING (case-insensitive)|LOWER(firstname) like '%' + LOWER(?0) + '%'|
+
+## 5.7 事务性
+
+默认情况下，存储库实例上的CRUD方法是事务性的。对于读取操作，事务配置```readOnly```标志设置为```true```。所有其他的都配置了一个普通的```@Transactional```，以便应用默认的事务配置。有关详细信息，请参见[JavaDoc](https://docs.spring.io/spring-data/data-jpa/docs/current/api/index.html?org/springframework/data/jpa/repository/support/SimpleJpaRepository.html)。如果需要调整存储库中声明的方法之一的事务配置，请在存储库接口中重新声明该方法，如下所示：
+
+```java
+public interface UserRepository extends CrudRepository<User, Long> {
+
+  @Override
+  @Transactional(timeout = 10)
+  public List<User> findAll();
+  // Further query method declarations
+}
+```
+
+> 这样做会导致```findAll()```方法以10秒的超时运行，并且没有```readOnly```标志。
+
+使用事务行为的另一种方法是使用覆盖多个存储库的修饰器或服务的实现,通常该实现涉及多个仓库。其目的是为非CRUD操作定义事务边界。下面的示例演示如何将这样的修饰器用于多个存储库：
+
+```java
+@Service
+class UserManagementImpl implements UserManagement {
+
+  private final UserRepository userRepository;
+  private final RoleRepository roleRepository;
+
+  @Autowired
+  public UserManagementImpl(UserRepository userRepository,
+    RoleRepository roleRepository) {
+    this.userRepository = userRepository;
+    this.roleRepository = roleRepository;
+  }
+
+  @Transactional
+  public void addRoleToAllUsers(String roleName) {
+    Role role = roleRepository.findByName(roleName);
+    for (User user : userRepository.findAll()) {
+      user.addRole(role);
+      userRepository.save(user);
+    }
+}
+```
+
+上例使对```addRoleToAllUsers(…```的调用在事务中运行（创建新事务,如果当前有运行的事务则参与当前事务）。然后忽略存储库中的事务配置，因为外部事务配置决定了实际使用的事务配置。请注意，您必须激活```<tx:annotation-driven/>```，或者显式使用```@EnableTransactionManagement```注解以获取基于注释的配置才能工作。本例假设您使用组件扫描。
+
+### 5.7.1. 事务化查询方法
+
+要使查询方法具有事务性，请在您定义的存储库接口上使用```@Transactional```，如下例所示：
+
+```java
+@Transactional(readOnly = true)
+public interface UserRepository extends JpaRepository<User, Long> {
+
+  List<User> findByLastname(String lastname);
+
+  @Modifying
+  @Transactional
+  @Query("delete from User u where u.active = false")
+  void deleteInactiveUsers();
+}
+```
+
+通常，您希望```readOnly```标志设置为```true```，因为大多数查询方法只读取数据。与此相反，```deleteInactiveUsers（）```使用```@Modifying```注释并重写事务配置。因此，该方法在```readOnly```标志设置为```false```的情况下运行。
+
+
+>
+>您可以将事务用于只读查询，并通过设置```readOnly```标志将其标记为只读查询。但是，这样做并不意味着检查您没有触发操作查询（尽管有些数据库拒绝只读事务中的```insert```和```update```语句）。相反，```readOnly```标志将作为提示传播到底层JDBC驱动程序以进行性能优化。此外，Spring对底层JPA提供者执行一些优化。例如，当与Hibernate一起使用时，当您将事务配置为只读时，flush模式设置为never，这将导致hibernate跳过脏数据检查（对大型对象树性能有显著改进）。
+
+## 5.8 锁
+
+要指定要使用的锁定模式，可以在查询方法上使用```@Lock```注释，如下例所示：
+
+```java
+interface UserRepository extends Repository<User, Long> {
+
+  // Plain query method
+  @Lock(LockModeType.READ)
+  List<User> findByLastname(String lastname);
+}
+```
+
+此方法声明将导致触发查询的```LockModeType```为读锁。您还可以通过在存储库接口中重新定义CRUD方法并添加```@Lock```注释来定义CRUD方法的锁定，如下例所示：
+
+```java
+interface UserRepository extends Repository<User, Long> {
+  // Redeclaration of a CRUD method
+  @Lock(LockModeType.READ);
+  List<User> findAll();
+}
+```
+
+## 5.9. 审查
+
+### 5.9.1
+
+Spring数据提供了复杂的支持，可以透明地跟踪创建或更改实体的人员以及更改发生的时间。要从该功能中获益，您必须为实体类配备审计元数据，这些元数据可以使用注释或通过实现接口来定义。
+
+#### 基于注解的审查元数据
+我们提供```@CreatedBy``` 和 ```@LastModifiedBy ```来记录创建或者修改实体的用户,用 ```@CreatedDate```和```@LastModifiedDate```来捕捉变化发生的时间.
+
+```java
+class Customer {
+
+  @CreatedBy
+  private User user;
+  @CreatedDate
+  private DateTime createdDate;
+  // … further properties omitted
+}
+```
+
+如您所见，根据您要捕获的信息，可以有选择地应用注释。更改时捕获的注释可以用于```Joda-Time```、```DateTime```、低版本Java的```Date```和```Calendar``` 、JDK8日期和时间类型以及long或Long类型的属性。
+
+
+#### 基于接口的审查元数据
+
+如果不想使用注释定义审核元数据，可以让领域类实现```Auditable```接口。它为所有审核属性暴露setter方法。
+
+还有一个方便的基类```AbstractAuditable```，您可以对其进行扩展，以避免手动实现接口方法的需要。这样做会增加领域类与Spring Data的耦合，这可能是您想要避免的。通常基于注解定义审计元数据的方法是首选的，因为它的侵入性较小，而且更灵活。
+
+
+#### 审计人员
+
+如果您使用```@createdBy```或```@lastModifiedBy```，则审核基础结构需要以某种方式了解当前用户。为此，我们提供了一个```AuditorAware<T>```的SPI接口，您必须实现该接口来告诉基础结构当前与应用程序交互的用户或系统是谁。泛型类型T定义了用```@ createdBy```或```@lastModifiedBy```注释的属性必须是什么类型。
+
+
+以下示例显示了使用Spring Security的身份验证对象的接口的实现：
+
+```java
+class SpringSecurityAuditorAware implements AuditorAware<User> {
+
+  public Optional<User> getCurrentAuditor() {
+
+    return Optional.ofNullable(SecurityContextHolder.getContext())
+			  .map(SecurityContext::getAuthentication)
+			  .filter(Authentication::isAuthenticated)
+			  .map(Authentication::getPrincipal)
+			  .map(User.class::cast);
+  }
+}
+```
+
+
+该实现访问Spring Security提供的身份验证对象，并查找在```UserDetailsService```实现中创建的自定义```UserDetails```实例。我们假设您正在通过```UserDetails```实现公开域用户，但基于找到的身份验证，您也可以从任何地方查找它。
+
+### 5.9.5 JPA审计
+
+#### 一般审计配置
+
+
+Spring Data JPA 附带了一个实体监听器，可用于获取审计信息的捕获.首先，您必须注册监听器列表，以便在您的orm.xml文档中，在以下例子中显示
+
+```xml
+<persistence-unit-metadata>
+  <persistence-unit-defaults>
+    <entity-listeners>
+      <entity-listener class="….data.jpa.domain.support.AuditingEntityListener" />
+    </entity-listeners>
+  </persistence-unit-defaults>
+</persistence-unit-metadata>
+```
+
+
+您还可以使用```@EntityListeners```注释在每个实体的基础上启用```AuditingEntityListener```，如下所示：
+
+```java
+@Entity
+@EntityListeners(AuditingEntityListener.class)
+public class MyEntity {
+
+}
+```
+
+> 审计特性要求```spring-aspects.jar```位于类路径上。
+
+通过适当修改```orm.xml```和类路径上的```spring-aspects.jar```，激活审计功能就是将Spring Data JPA auditing命名空间元素添加到配置中，如下所示：
+
+```xml
+<jpa:auditing auditor-aware-ref="yourAuditorAwareBean" />
+```
+
+
+As of Spring Data JPA 1.5, you can enable auditing by annotating a configuration class with the @EnableJpaAuditing annotation. You must still modify the orm.xml file and have spring-aspects.jar on the classpath. The following example shows how to use the @EnableJpaAuditing annotation:
+从Spring Data JPA  1.5开始，您可以通过使用 ```@EnableJpaAuditing``` 注释注释配置类来启用审计。您仍然必须修改```orm.xml```文件，并且在类路径上有```spring-aspects.jar```。下面的示例演示如何使用```@EnableJpaAuditing```注解：
+
+```java
+@Configuration
+@EnableJpaAuditing
+class Config {
+  @Bean
+  public AuditorAware<AuditableUser> auditorProvider() {
+    return new AuditorAwareImpl();
+  }
+}
+```
+
+如果将```AuditorAware```类型的bean暴露给```ApplicationContext```，则审核基础结构会自动获取它并使用它来确定要在域类型上设置的当前用户。如果在```ApplicationContext```中注册了多个实现，则可以通过显式设置```@EnableJpaAuditing```的```auditorAwareRef```属性来选择要使用的实现。
+
+## 5.10 其他注意事项
+
+### 5.10.1 在自定义实现中获取EntityManager
+
+当使用多个```EntityManager```实例和自定义存储库实现时，需要将正确的```EntityManager```连接到存储库实现类中.
+You can do so by explicitly naming the EntityManager in the @PersistenceContext annotation or, if the EntityManager is @Autowired, by using @Qualifier.
+您可以通过在```@PersistenceContext```注释中显式命名```EntityManager```，或者，如果```EntityManager```是```@autowired```，则可以使用```@Qualifier```。
+
+
+从Spring Data JPA 1.9开始，Spring Data JPA 包含一个名为```jpaContext```的类，该类允许您通过托管域类获取```Entitymanager```，假设它仅由应用程序中的一个```Entitymanager```实例管理。下面的示例演示如何在自定义存储库中使用```jpaContext```：
+
+```java
+class UserRepositoryImpl implements UserRepositoryCustom {
+
+  private final EntityManager em;
+
+  @Autowired
+  public UserRepositoryImpl(JpaContext context) {
+    this.em = context.getEntityManagerByManagedType(User.class);
+  }
+
+  …
+}
+```
+这种方法的优点是，如果将域类型分配给不同的持久性单元，则不必触碰存储库即可更改对持久性单元的引用。
+
+### 5.10.2 合并持久性单元
+
+Spring支持有多个持久性单元。但是，有时您可能希望模块化您的应用程序，但仍然要确保所有这些模块都在单个持久性单元中运行。要启用该行为，Spring Data JPA提供了一个```PersistenceUnitManager```实现，该实现根据持久性单元的名称自动合并持久性单元，如下例所示：
+
+```xml
+<bean class="….LocalContainerEntityManagerFactoryBean">
+  <property name="persistenceUnitManager">
+    <bean class="….MergingPersistenceUnitManager" />
+  </property>
+</bean>
+```
