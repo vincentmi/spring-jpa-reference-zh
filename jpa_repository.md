@@ -917,5 +917,88 @@ public class Person {
 ```
 
 
+The preceding example shows a simple domain object. You can use it to create an Example. By default, fields having null values are ignored, and strings are matched by using the store specific defaults. Examples can be built by either using the of factory method or by using ExampleMatcher. Example is immutable. The following listing shows a simple Example:
+前面的示例展示了一个简单的域对象。你可以用它来创建一个```Example```。默认情况下，将忽略具有空值的字段，并使用特定于存储区的默认值来匹配字符串。```Example```可以使用工厂方法或```ExampleMatcher```来构建示例。```Example```是不可变的。下面的列表显示了一个简单的示例：
+
+```java
+Person person = new Person();  //(1)                        
+person.setFirstname("Dave");       //(2)                   
+Example<Person> example = Example.of(person); //(3) 
+```
+
+1) 创建一个领域对象的新实例
+2) 设置查询的属性
+3) 创建```Example```
+
+
+Examples are ideally be executed with repositories. To do so, let your repository interface extend QueryByExampleExecutor<T>. The following listing shows an excerpt from the QueryByExampleExecutor interface:
+理想情况下，```Example```是使用存储库执行的。为此，让存储库接口扩展```QueryByExampleExecutor<T>```。以下列表显示了```QueryByExampleExecutor```接口的摘录：
+
+```java
+public interface QueryByExampleExecutor<T> {
+  <S extends T> S findOne(Example<S> example);
+  <S extends T> Iterable<S> findAll(Example<S> example);
+  // … more functionality omitted.
+}
+```
+
+### 5.6.3 Example Matcher
+
+示例不限于默认设置。可以使用```ExampleMatcher```为字符串匹配、空处理和特定于属性的设置指定自己的默认值，如下例所示：
+
+```java
+Person person = new Person();     //(1)                      
+person.setFirstname("Dave");          //(2)                 
+
+ExampleMatcher matcher = ExampleMatcher.matching() //(3)     
+  .withIgnorePaths("lastname")                     //(4)    
+  .withIncludeNullValues()                         //(5)
+  .withStringMatcherEnding();                      //(6)    
+
+Example<Person> example = Example.of(person, matcher); //(7)
+```
+
+1) 创建领域对象的新实例.
+2) 设置属性.
+3) 创建一个 ```ExampleMatcher```用于匹配所有值,就算没有进一步的配置,这个阶段也可以进行使用. 
+4) 构造一个新的```ExampleMatcher```忽略掉```lastname```路径的属性.
+5) 构造一个新的```ExampleMatcher```忽略掉```lastname```路径的属性并且包含```Null```值.
+6) 构造一个新的```ExampleMatcher```忽略掉```lastname```路径的属性并且包含```Null```值.并且执行一个字符串后缀匹配.
+7) 根据领域对象和配置好的```ExampleMatcher```创建一个```Example```.  
+
+
+默认情况下，```ExampleMatcher```希望探测器上设置的所有值都匹配。如果要获得与隐式定义的任何谓词匹配的结果，请使用```ExampleMatcher.matchingAny()```。
+
+您可以指定单个属性的行为（如```firstname```和```lastname```，或者嵌套属性```address.city```。您可以使用匹配选项和区分大小写来调整它，如下面的示例所示：
+
+```java
+ExampleMatcher matcher = ExampleMatcher.matching()
+  .withMatcher("firstname", endsWith())
+  .withMatcher("lastname", startsWith().ignoreCase());
+}
+```
+
+配置匹配器选项的另一种方法是使用闭包（在Java 8中支持）。此方法创建一个回调，要求实现者修改匹配器。你不需要返回匹配器，因为配置选项保存在匹配器实例中。以下示例显示使用闭包的匹配器：
+
+```java
+ExampleMatcher matcher = ExampleMatcher.matching()
+  .withMatcher("firstname", match -> match.endsWith())
+  .withMatcher("firstname", match -> match.startsWith());
+}
+```
+
+```Example```创建的查询使用了配置的合并视图.默认匹配设置可以在```ExampleMatcher```的级别进行设置设置，而个别设置可以在特定的属性路径进行应用。在```ExampleMatcher```设置的属性会被属性路径继承.除非他们是显式定义的.属性修补程序上的设置的优先级高于默认设置。下表描述了各种示例匹配器设置的范围：
+
+| Setting | 	Scope|
+|---|---|
+|处理NULL值|ExampleMatcher|
+|匹配字符串|ExampleMatcher和属性路径|
+|忽略属性|属性路径|
+|大小写|ExampleMatcher 和属性路径|
+|值变换|属性路径|
+
+### 5.6.4 执行 Example
+
+
 
 
